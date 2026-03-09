@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import type { VacancyDay } from '../types';
 
 interface VacancyCalendarProps {
   days: VacancyDay[];
   fetchedAt: string;
 }
+
+const PAGE_SIZE = 28; // 4週分
 
 // 空室ステータスに応じたスタイル
 function getStatusStyle(status: VacancyDay['status']): string {
@@ -41,12 +44,14 @@ function formatDate(dateStr: string): { md: string; weekday: string } {
 // 曜日に応じたテキスト色
 function getWeekdayColor(dateStr: string): string {
   const day = new Date(dateStr).getDay();
-  if (day === 0) return 'text-red-500';   // 日曜
-  if (day === 6) return 'text-blue-500';  // 土曜
+  if (day === 0) return 'text-red-500';  // 日曜
+  if (day === 6) return 'text-blue-500'; // 土曜
   return 'text-gray-600';
 }
 
 export function VacancyCalendar({ days, fetchedAt }: VacancyCalendarProps) {
+  const [page, setPage] = useState(0);
+
   if (days.length === 0) {
     return (
       <div className="text-center text-gray-400 py-8">
@@ -55,14 +60,44 @@ export function VacancyCalendar({ days, fetchedAt }: VacancyCalendarProps) {
     );
   }
 
+  const totalPages = Math.ceil(days.length / PAGE_SIZE);
+  const visibleDays = days.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  // 表示期間のラベル（例: 3/9 〜 4/5）
+  const firstDay = visibleDays[0];
+  const lastDay = visibleDays[visibleDays.length - 1];
+  const periodLabel = firstDay && lastDay
+    ? `${formatDate(firstDay.date).md} 〜 ${formatDate(lastDay.date).md}`
+    : '';
+
   return (
     <div>
       <p className="text-xs text-gray-400 mb-3">
         最終取得: {new Date(fetchedAt).toLocaleString('ja-JP')}
       </p>
-      {/* カレンダーグリッド（レスポンシブ） */}
+
+      {/* ページナビゲーション */}
+      <div className="flex items-center justify-between mb-2">
+        <button
+          onClick={() => setPage((p) => p - 1)}
+          disabled={page === 0}
+          className="px-2 py-1 text-sm rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-gray-50 transition-colors"
+        >
+          ⏪ 前の4週
+        </button>
+        <span className="text-sm text-gray-600 font-medium">{periodLabel}</span>
+        <button
+          onClick={() => setPage((p) => p + 1)}
+          disabled={page >= totalPages - 1}
+          className="px-2 py-1 text-sm rounded-lg border border-gray-200 disabled:opacity-30 hover:bg-gray-50 transition-colors"
+        >
+          次の4週 ⏩
+        </button>
+      </div>
+
+      {/* カレンダーグリッド */}
       <div className="grid grid-cols-7 gap-1">
-        {days.map((day) => {
+        {visibleDays.map((day) => {
           const { md, weekday } = formatDate(day.date);
           const weekdayColor = getWeekdayColor(day.date);
           return (
@@ -71,22 +106,23 @@ export function VacancyCalendar({ days, fetchedAt }: VacancyCalendarProps) {
               className={`border rounded-lg p-2 text-center text-xs ${getStatusStyle(day.status)}`}
               title={day.note}
             >
-              {/* 日付 */}
               <div className={`font-medium ${weekdayColor}`}>{md}</div>
               <div className={`text-xs mb-1 ${weekdayColor}`}>({weekday})</div>
-              {/* ステータス */}
               <div className="font-bold text-base">{getStatusText(day.status)}</div>
-              {/* 残り台数 */}
               {day.availableCount !== undefined && (
                 <div className="text-xs mt-0.5">残{day.availableCount}</div>
               )}
-              {/* 料金 */}
               {day.price !== undefined && (
                 <div className="text-xs mt-0.5">¥{day.price.toLocaleString()}</div>
               )}
             </div>
           );
         })}
+      </div>
+
+      {/* ページ数表示 */}
+      <div className="text-center text-xs text-gray-400 mt-2">
+        {page + 1} / {totalPages} ページ
       </div>
 
       {/* 凡例 */}
