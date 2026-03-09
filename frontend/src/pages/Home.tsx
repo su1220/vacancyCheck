@@ -58,7 +58,7 @@ export function Home() {
             </div>
             <FacilityList
               facilities={facilities}
-              onUpdate={update}
+              onUpdate={async (id, data) => { await update(id, data); }}
               onDelete={remove}
             />
           </>
@@ -69,7 +69,7 @@ export function Home() {
       {showModal && (
         <AddFacilityModal
           onClose={() => setShowModal(false)}
-          onAdd={add}
+          onAdd={async (data) => { await add(data); }}
         />
       )}
     </div>
