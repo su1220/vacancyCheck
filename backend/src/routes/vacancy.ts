@@ -1,0 +1,76 @@
+import { Router, Request, Response } from 'express';
+import { VacancyResult } from '../types/index';
+import { loadFacilities, saveFacilities, saveVacancyResult, getVacancyResult } from '../data/storage';
+import { selectScraper, safeScrape } from '../scrapers/base';
+
+const router = Router();
+
+// 空室チェック実行（スクレイピング）
+router.post('/check', async (req: Request, res: Response) => {
+  const { facilityId, url } = req.body as { facilityId?: string; url?: string };
+
+  if (!facilityId || !url) {
+    res.status(400).json({ error: 'facilityIdとurlは必須です' });
+    return;
+  }
+
+  // 施設の存在確認
+  const facilities = loadFacilities();
+  const facility = facilities.find((f) => f.id === facilityId);
+  if (!facility) {
+    res.status(404).json({ error: '施設が見つかりません' });
+    return;
+  }
+
+  try {
+    // URLに対応するスクレイパーを選択して実行
+    const scraper = selectScraper(url);
+    console.log(`[vacancy] スクレイパー選択: ${scraper.name}, URL: ${url}`);
+
+    // notesをプランキーワードとして渡す
+    const options = facility.notes ? { planKeyword: facility.notes } : undefined;
+    if (options) {
+      console.log(`[vacancy] プランキーワード: "${facility.notes}"`);
+    }
+    const days = await safeScrape(url, scraper, options);
+
+    const result: VacancyResult = {
+      facilityId,
+      fetchedAt: new Date().toISOString(),
+      days,
+    };
+
+    // 結果を保存
+    saveVacancyResult(result);
+
+    // 施設のlastCheckedを更新
+    facility.lastChecked = result.fetchedAt;
+    const updatedFacilities = facilities.map((f) =>
+      f.id === facilityId ? facility : f
+    );
+    saveFacilities(updatedFacilities);
+
+    res.json(result);
+  } catch (error) {
+    console.error('[vacancy] スクレイピングエラー:', error);
+    res.status(500).json({
+      error: 'スクレイピングに失敗しました',
+      details: error instanceof Error ? error.message : '不明なエラー',
+    });
+  }
+});
+
+// 最後の空室チェック結果取得
+router.get('/:facilityId', (req: Request, res: Response) => {
+  const facilityId = req.params['facilityId'] as string;
+  const result = getVacancyResult(facilityId);
+
+  if (!result) {
+    res.status(404).json({ error: 'この施設の空室データがありません' });
+    return;
+  }
+
+  res.json(result);
+});
+
+export default router;

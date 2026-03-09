@@ -1,0 +1,25 @@
+# 依存パッケージ
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# ビルド成果物
+frontend/dist/
+backend/dist/
+
+# データファイル（施設情報・空室キャッシュ）
+backend/data/
+
+# 環境変数
+.env
+.env.local
+
+# Playwright
+.playwright-mcp/
+backend/.playwright-cache/
+
+# OS
+.DS_Store
+
+# エディタ
+.vscode/
