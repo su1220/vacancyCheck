@@ -6,13 +6,13 @@ import { loadFacilities, saveFacilities } from '../data/storage';
 const router = Router();
 
 // 施設一覧取得
-router.get('/', (_req: Request, res: Response) => {
-  const facilities = loadFacilities();
+router.get('/', async (_req: Request, res: Response) => {
+  const facilities = await loadFacilities();
   res.json(facilities);
 });
 
 // 施設登録
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
   const { name, url, notes } = req.body as {
     name?: string;
     url?: string;
@@ -44,19 +44,19 @@ router.post('/', (req: Request, res: Response) => {
     createdAt: new Date().toISOString(),
   };
 
-  const facilities = loadFacilities();
+  const facilities = await loadFacilities();
   facilities.push(newFacility);
-  saveFacilities(facilities);
+  await saveFacilities(facilities);
 
   res.status(201).json(newFacility);
 });
 
 // 施設情報更新
-router.put('/:id', (req: Request, res: Response) => {
+router.put('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const updates = req.body as Partial<Facility>;
 
-  const facilities = loadFacilities();
+  const facilities = await loadFacilities();
   const index = facilities.findIndex((f) => f.id === id);
 
   if (index === -1) {
@@ -67,15 +67,15 @@ router.put('/:id', (req: Request, res: Response) => {
   // idとcreatedAtは変更不可
   const { id: _id, createdAt: _createdAt, ...safeUpdates } = updates;
   facilities[index] = { ...facilities[index], ...safeUpdates };
-  saveFacilities(facilities);
+  await saveFacilities(facilities);
 
   res.json(facilities[index]);
 });
 
 // 施設削除
-router.delete('/:id', (req: Request, res: Response) => {
+router.delete('/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const facilities = loadFacilities();
+  const facilities = await loadFacilities();
   const filtered = facilities.filter((f) => f.id !== id);
 
   if (filtered.length === facilities.length) {
@@ -83,7 +83,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     return;
   }
 
-  saveFacilities(filtered);
+  await saveFacilities(filtered);
   res.status(204).send();
 });
 

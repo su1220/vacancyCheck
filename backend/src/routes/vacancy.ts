@@ -15,7 +15,7 @@ router.post('/check', async (req: Request, res: Response) => {
   }
 
   // 施設の存在確認
-  const facilities = loadFacilities();
+  const facilities = await loadFacilities();
   const facility = facilities.find((f) => f.id === facilityId);
   if (!facility) {
     res.status(404).json({ error: '施設が見つかりません' });
@@ -48,7 +48,7 @@ router.post('/check', async (req: Request, res: Response) => {
     const updatedFacilities = facilities.map((f) =>
       f.id === facilityId ? facility : f
     );
-    saveFacilities(updatedFacilities);
+    await saveFacilities(updatedFacilities);
 
     res.json(result);
   } catch (error) {
