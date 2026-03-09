@@ -11,7 +11,11 @@ const genericScraper: ScraperPlugin = {
   matchUrl: (_url: string): boolean => true,
 
   scrape: async (url: string, _options?: ScrapeOptions): Promise<VacancyDay[]> => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+      headless: true,
+      // Linuxサーバー（Renderなど）ではサンドボックスを無効化する必要がある
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     const context = await browser.newContext({
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
