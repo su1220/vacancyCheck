@@ -1,6 +1,6 @@
-import { chromium, Browser } from 'playwright';
 import { ScraperPlugin, ScrapeOptions, VacancyDay } from '../types/index';
 import { registerScraper } from './base';
+import { getBrowser } from './browser';
 
 // なっぷAPIのレスポンス型
 interface NapcampPlan {
@@ -17,28 +17,6 @@ interface NapcampReservationDay {
     base: number;
     unit: number;
   };
-}
-
-// サーバー全体で共有するブラウザインスタンス
-let sharedBrowser: Browser | null = null;
-
-// ブラウザインスタンスを取得（なければ起動）
-async function getBrowser(): Promise<Browser> {
-  if (!sharedBrowser || !sharedBrowser.isConnected()) {
-    console.log('[napcamp] ブラウザを起動します');
-    sharedBrowser = await chromium.launch({
-      headless: true,
-      // Linuxサーバー（Renderなど）ではサンドボックスを無効化する必要がある
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-  }
-  return sharedBrowser;
-}
-
-// サーバー起動時にブラウザを事前起動する（改善A: 起動コスト削減）
-export async function initNapcampBrowser(): Promise<void> {
-  await getBrowser();
-  console.log('[napcamp] ブラウザの事前起動完了');
 }
 
 // なっぷAPIのstatusコードを変換
