@@ -105,45 +105,48 @@ const napcampScraper: ScraperPlugin = {
       activePlan ??= plans.find((p: NapcampPlan) => p.status === 1) ?? plans[0];
       console.log(`[napcamp] プラン選択: ${activePlan.site_name} (ID: ${activePlan.id})`);
 
-      // 今月と来月の空室データを取得（改善B: Promise.allで並列実行）
+      // 今月と来月の空室データを取得（改善B: ブラウザ内でPromise.allを使い並列fetch）
       const now = new Date();
       const months = [
         `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
         `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, '0')}`,
       ];
 
-      const [thisMonthData, nextMonthData] = await Promise.all(
-        months.map((month) =>
-          page.evaluate(
-            async (params: { id: string; planId: number; month: string }) => {
-              const res = await fetch(
-                `/api/campsite/${params.id}/plans/${params.planId}/reservation?month=${params.month}`
-              );
-              return res.ok ? res.json() : [];
-            },
-            { id: campsiteId, planId: activePlan!.id, month }
-          )
-        )
+      // page.evaluate を1回にまとめ、ブラウザ内で並列fetchする（CDP衝突を避けるため）
+      const allRawDays = await page.evaluate(
+        async (params: { id: string; planId: number; months: string[] }) => {
+          const results = await Promise.all(
+            params.months.map((month) =>
+              fetch(
+                `/api/campsite/${params.id}/plans/${params.planId}/reservation?month=${month}`
+              ).then((r) => (r.ok ? r.json() : []))
+            )
+          );
+          // 全月分のデータをフラットに結合して返す
+          return (results as unknown[][]).flat();
+        },
+        { id: campsiteId, planId: activePlan.id, months }
       );
 
       const today = new Date().toISOString().split('T')[0];
-      const allDays: VacancyDay[] = [];
+      // 日付をキーにMapで重複排除（APIが複数月にまたがるデータを返す場合があるため）
+      const daysMap = new Map<string, VacancyDay>();
 
-      for (const day of [...(thisMonthData as NapcampReservationDay[]), ...(nextMonthData as NapcampReservationDay[])]) {
+      for (const day of allRawDays as NapcampReservationDay[]) {
         const [y, m, d] = day.date;
         const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
         // 過去の日付はスキップ
         if (dateStr < today) continue;
 
-        allDays.push({
+        daysMap.set(dateStr, {
           date: dateStr,
           status: convertStatus(day.status),
           price: day.price.guideline > 0 ? day.price.guideline : undefined,
         });
       }
 
-      return allDays;
+      return Array.from(daysMap.values());
     } finally {
       // 改善A: ブラウザは閉じずコンテキストのみ閉じる
       await context.close();
