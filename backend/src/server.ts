@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import facilitiesRouter from './routes/facilities';
 import vacancyRouter from './routes/vacancy';
-import { registerNapcampScraper } from './scrapers/napcamp';
+import { registerNapcampScraper, initNapcampBrowser } from './scrapers/napcamp';
 import { registerGenericScraper } from './scrapers/generic';
 
 const app = express();
@@ -18,6 +18,11 @@ app.use(express.json());
 // スクレイパーの登録（特定サイト → 汎用の順）
 registerNapcampScraper();
 registerGenericScraper(); // フォールバック用として最後に登録
+
+// 改善A: サーバー起動後にブラウザを事前起動しておく
+initNapcampBrowser().catch((err) => {
+  console.error('[server] ブラウザ事前起動に失敗:', err);
+});
 
 // APIルート
 app.use('/api/facilities', facilitiesRouter);

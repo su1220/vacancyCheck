@@ -66,6 +66,19 @@ export async function checkVacancy(
   return res.json();
 }
 
+// 全施設の空室チェックを一括実行
+export async function checkAllVacancies(): Promise<{
+  results: VacancyResult[];
+  errors: { facilityId: string; error: string }[];
+}> {
+  const res = await fetch(`${BASE_URL}/vacancy/check-all`, { method: 'POST' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? '全施設チェックに失敗しました');
+  }
+  return res.json();
+}
+
 // 空室チェック結果取得
 export async function getVacancyResult(
   facilityId: string

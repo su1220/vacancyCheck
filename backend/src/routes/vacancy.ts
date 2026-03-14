@@ -60,6 +60,56 @@ router.post('/check', async (req: Request, res: Response) => {
   }
 });
 
+// 全施設の空室チェックを並列実行
+router.post('/check-all', async (_req: Request, res: Response) => {
+  const facilities = await loadFacilities();
+  if (facilities.length === 0) {
+    res.json({ results: [], errors: [] });
+    return;
+  }
+
+  // 改善D: 全施設を並列スクレイピング
+  const settled = await Promise.allSettled(
+    facilities.map(async (facility) => {
+      const scraper = selectScraper(facility.url);
+      const options = facility.notes ? { planKeyword: facility.notes } : undefined;
+      const days = await safeScrape(facility.url, scraper, options);
+
+      const result: VacancyResult = {
+        facilityId: facility.id,
+        fetchedAt: new Date().toISOString(),
+        days,
+      };
+      saveVacancyResult(result);
+
+      facility.lastChecked = result.fetchedAt;
+      return result;
+    })
+  );
+
+  // lastCheckedを一括保存
+  const updatedFacilities = await loadFacilities();
+  const latestCheckedMap = new Map(
+    settled
+      .filter((s): s is PromiseFulfilledResult<VacancyResult> => s.status === 'fulfilled')
+      .map((s) => [s.value.facilityId, s.value.fetchedAt])
+  );
+  const saved = updatedFacilities.map((f) => {
+    const checkedAt = latestCheckedMap.get(f.id);
+    return checkedAt ? { ...f, lastChecked: checkedAt } : f;
+  });
+  await saveFacilities(saved);
+
+  const results = settled
+    .filter((s): s is PromiseFulfilledResult<VacancyResult> => s.status === 'fulfilled')
+    .map((s) => s.value);
+  const errors = settled
+    .filter((s): s is PromiseRejectedResult => s.status === 'rejected')
+    .map((s, i) => ({ facilityId: facilities[i]?.id, error: String(s.reason) }));
+
+  res.json({ results, errors });
+});
+
 // 最後の空室チェック結果取得
 router.get('/:facilityId', (req: Request, res: Response) => {
   const facilityId = req.params['facilityId'] as string;

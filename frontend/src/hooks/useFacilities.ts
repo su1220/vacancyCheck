@@ -2,17 +2,28 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Facility } from '../types';
 import { getFacilities, addFacility, updateFacility, deleteFacility } from '../api/client';
 
+// サーバーがスリープから起動中とみなす閾値（ミリ秒）
+const WAKING_THRESHOLD_MS = 3000;
+
 export function useFacilities() {
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 改善C: サーバー起動中フラグ（レスポンスが遅い場合にtrue）
+  const [serverWaking, setServerWaking] = useState(false);
 
   // 施設一覧の取得
   const fetchFacilities = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+
+      // 改善C: レスポンスが遅い場合はサーバー起動中と判断してフラグを立てる
+      const wakingTimer = setTimeout(() => setServerWaking(true), WAKING_THRESHOLD_MS);
       const data = await getFacilities();
+      clearTimeout(wakingTimer);
+      setServerWaking(false);
+
       setFacilities(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : '読み込みに失敗しました');
@@ -48,5 +59,5 @@ export function useFacilities() {
     setFacilities((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
-  return { facilities, loading, error, refetch: fetchFacilities, add, update, remove };
+  return { facilities, loading, error, serverWaking, refetch: fetchFacilities, add, update, remove };
 }

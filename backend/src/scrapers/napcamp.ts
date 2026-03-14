@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium, Browser } from 'playwright';
 import { ScraperPlugin, ScrapeOptions, VacancyDay } from '../types/index';
 import { registerScraper } from './base';
 
@@ -17,6 +17,28 @@ interface NapcampReservationDay {
     base: number;
     unit: number;
   };
+}
+
+// サーバー全体で共有するブラウザインスタンス
+let sharedBrowser: Browser | null = null;
+
+// ブラウザインスタンスを取得（なければ起動）
+async function getBrowser(): Promise<Browser> {
+  if (!sharedBrowser || !sharedBrowser.isConnected()) {
+    console.log('[napcamp] ブラウザを起動します');
+    sharedBrowser = await chromium.launch({
+      headless: true,
+      // Linuxサーバー（Renderなど）ではサンドボックスを無効化する必要がある
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+  }
+  return sharedBrowser;
+}
+
+// サーバー起動時にブラウザを事前起動する（改善A: 起動コスト削減）
+export async function initNapcampBrowser(): Promise<void> {
+  await getBrowser();
+  console.log('[napcamp] ブラウザの事前起動完了');
 }
 
 // なっぷAPIのstatusコードを変換
@@ -44,11 +66,8 @@ const napcampScraper: ScraperPlugin = {
     }
     const campsiteId = match[1];
 
-    const browser = await chromium.launch({
-      headless: true,
-      // Linuxサーバー（Renderなど）ではサンドボックスを無効化する必要がある
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    // 改善A: 共有ブラウザを使い回し、コンテキストのみ新規作成
+    const browser = await getBrowser();
     const context = await browser.newContext({
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -86,47 +105,48 @@ const napcampScraper: ScraperPlugin = {
       activePlan ??= plans.find((p: NapcampPlan) => p.status === 1) ?? plans[0];
       console.log(`[napcamp] プラン選択: ${activePlan.site_name} (ID: ${activePlan.id})`);
 
-      // 今月と来月の空室データを取得
+      // 今月と来月の空室データを取得（改善B: Promise.allで並列実行）
       const now = new Date();
       const months = [
         `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
         `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, '0')}`,
       ];
 
+      const [thisMonthData, nextMonthData] = await Promise.all(
+        months.map((month) =>
+          page.evaluate(
+            async (params: { id: string; planId: number; month: string }) => {
+              const res = await fetch(
+                `/api/campsite/${params.id}/plans/${params.planId}/reservation?month=${params.month}`
+              );
+              return res.ok ? res.json() : [];
+            },
+            { id: campsiteId, planId: activePlan!.id, month }
+          )
+        )
+      );
+
+      const today = new Date().toISOString().split('T')[0];
       const allDays: VacancyDay[] = [];
 
-      for (const month of months) {
-        const reservationData = await page.evaluate(
-          async (params: { id: string; planId: number; month: string }) => {
-            const res = await fetch(
-              `/api/campsite/${params.id}/plans/${params.planId}/reservation?month=${params.month}`
-            );
-            return res.ok ? res.json() : [];
-          },
-          { id: campsiteId, planId: activePlan.id, month }
-        );
+      for (const day of [...(thisMonthData as NapcampReservationDay[]), ...(nextMonthData as NapcampReservationDay[])]) {
+        const [y, m, d] = day.date;
+        const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-        const days = reservationData as NapcampReservationDay[];
-        const today = new Date().toISOString().split('T')[0];
+        // 過去の日付はスキップ
+        if (dateStr < today) continue;
 
-        for (const day of days) {
-          const [y, m, d] = day.date;
-          const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
-          // 過去の日付はスキップ
-          if (dateStr < today) continue;
-
-          allDays.push({
-            date: dateStr,
-            status: convertStatus(day.status),
-            price: day.price.guideline > 0 ? day.price.guideline : undefined,
-          });
-        }
+        allDays.push({
+          date: dateStr,
+          status: convertStatus(day.status),
+          price: day.price.guideline > 0 ? day.price.guideline : undefined,
+        });
       }
 
       return allDays;
     } finally {
-      await browser.close();
+      // 改善A: ブラウザは閉じずコンテキストのみ閉じる
+      await context.close();
     }
   },
 };
