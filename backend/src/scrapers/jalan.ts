@@ -25,14 +25,15 @@ const jalanScraper: ScraperPlugin = {
     const page = await context.newPage();
 
     try {
-      // ホテル詳細ページを開く（カレンダーはSSRで描画済み）
+      // ホテル詳細ページを開く
+      // networkidle は広告・アナリティクス系リクエストが永続するため使わない
       await page.goto(
         `https://www.jalan.net/yad${yadNo}/`,
-        { waitUntil: 'networkidle', timeout: 30000 }
+        { waitUntil: 'domcontentloaded', timeout: 30000 }
       );
 
-      // カレンダーが描画されるまで待機
-      await page.waitForSelector('.calendar-cell.day', { timeout: 15000 });
+      // カレンダーがJS描画されるまで待機（最大20秒）
+      await page.waitForSelector('.calendar-cell.day', { timeout: 20000 });
 
       // カレンダーからセルを抽出する関数
       const extractCells = (): Promise<VacancyDay[]> =>
