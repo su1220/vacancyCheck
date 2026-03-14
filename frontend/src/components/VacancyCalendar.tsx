@@ -49,6 +49,30 @@ function getWeekdayColor(dateStr: string): string {
   return 'text-gray-600';
 }
 
+// YYYY-MM-DD文字列をローカル時刻でパース（タイムゾーンずれ防止）
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+// 指定日付の週の月曜日を返す
+function getWeekMonday(dateStr: string): Date {
+  const date = parseLocalDate(dateStr);
+  const day = date.getDay(); // 0=日, 1=月, ..., 6=土
+  const diff = day === 0 ? -6 : 1 - day; // 月曜日まで遡る
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diff);
+  return monday;
+}
+
+// DateをYYYY-MM-DD文字列に変換
+function toDateStr(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function VacancyCalendar({ days, fetchedAt }: VacancyCalendarProps) {
   const [page, setPage] = useState(0);
 
@@ -60,14 +84,30 @@ export function VacancyCalendar({ days, fetchedAt }: VacancyCalendarProps) {
     );
   }
 
-  const totalPages = Math.ceil(days.length / PAGE_SIZE);
-  const visibleDays = days.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // 日付→データのマップ
+  const dayMap = new Map(days.map((d) => [d.date, d]));
+
+  // 最初のデータ日の週の月曜日からスタート
+  const startMonday = getWeekMonday(days[0].date);
+
+  // 総ページ数：月曜日から最終データ日まで何ページ分か
+  const lastDate = parseLocalDate(days[days.length - 1].date);
+  const totalDays = Math.ceil((lastDate.getTime() - startMonday.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const totalPages = Math.ceil(totalDays / PAGE_SIZE);
+
+  // 現在ページの28日分の日付配列を生成
+  const pageStart = new Date(startMonday);
+  pageStart.setDate(startMonday.getDate() + page * PAGE_SIZE);
+  const pageDates: string[] = [];
+  for (let i = 0; i < PAGE_SIZE; i++) {
+    const d = new Date(pageStart);
+    d.setDate(pageStart.getDate() + i);
+    pageDates.push(toDateStr(d));
+  }
 
   // 表示期間のラベル（例: 3/9 〜 4/5）
-  const firstDay = visibleDays[0];
-  const lastDay = visibleDays[visibleDays.length - 1];
-  const periodLabel = firstDay && lastDay
-    ? `${formatDate(firstDay.date).md} 〜 ${formatDate(lastDay.date).md}`
+  const periodLabel = pageDates[0] && pageDates[pageDates.length - 1]
+    ? `${formatDate(pageDates[0]).md} 〜 ${formatDate(pageDates[pageDates.length - 1]).md}`
     : '';
 
   return (
@@ -97,12 +137,28 @@ export function VacancyCalendar({ days, fetchedAt }: VacancyCalendarProps) {
 
       {/* カレンダーグリッド */}
       <div className="grid grid-cols-7 gap-1">
-        {visibleDays.map((day) => {
-          const { md, weekday } = formatDate(day.date);
-          const weekdayColor = getWeekdayColor(day.date);
+        {pageDates.map((dateStr) => {
+          const day = dayMap.get(dateStr);
+          const { md, weekday } = formatDate(dateStr);
+          const weekdayColor = getWeekdayColor(dateStr);
+
+          // データなし（月曜始まりのパディング日）
+          if (!day) {
+            return (
+              <div
+                key={dateStr}
+                className="border rounded-lg p-2 text-center text-xs bg-gray-50 border-gray-100 opacity-40"
+              >
+                <div className={`font-medium ${weekdayColor}`}>{md}</div>
+                <div className={`text-xs mb-1 ${weekdayColor}`}>({weekday})</div>
+                <div className="text-gray-300">-</div>
+              </div>
+            );
+          }
+
           return (
             <div
-              key={day.date}
+              key={dateStr}
               className={`border rounded-lg p-2 text-center text-xs ${getStatusStyle(day.status)}`}
               title={day.note}
             >
