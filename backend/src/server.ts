@@ -4,6 +4,7 @@ import facilitiesRouter from './routes/facilities';
 import vacancyRouter from './routes/vacancy';
 import { registerNapcampScraper } from './scrapers/napcamp';
 import { registerRakutenScraper } from './scrapers/rakuten';
+import { registerJalanScraper } from './scrapers/jalan';
 import { registerGenericScraper } from './scrapers/generic';
 import { initBrowser } from './scrapers/browser';
 
@@ -20,6 +21,7 @@ app.use(express.json());
 // スクレイパーの登録（特定サイト → 汎用の順）
 registerNapcampScraper();
 registerRakutenScraper();
+registerJalanScraper();
 registerGenericScraper(); // フォールバック用として最後に登録
 
 // サーバー起動後にブラウザを事前起動しておく（改善A: 起動コスト削減）
