@@ -10,7 +10,12 @@ export async function getBrowser(): Promise<Browser> {
     sharedBrowser = await chromium.launch({
       headless: true,
       // Linuxサーバー（Renderなど）ではサンドボックスを無効化する必要がある
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        // ヘッドレス検出を無効化（bot判定回避）
+        '--disable-blink-features=AutomationControlled',
+      ],
     });
   }
   return sharedBrowser;

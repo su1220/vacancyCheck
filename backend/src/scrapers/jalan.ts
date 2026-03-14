@@ -21,6 +21,11 @@ const jalanScraper: ScraperPlugin = {
     const context = await browser.newContext({
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      // ロケールを日本語に設定
+      locale: 'ja-JP',
+      extraHTTPHeaders: {
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+      },
     });
     const page = await context.newPage();
 
@@ -32,8 +37,28 @@ const jalanScraper: ScraperPlugin = {
         { waitUntil: 'domcontentloaded', timeout: 30000 }
       );
 
-      // カレンダーがJS描画されるまで待機（最大20秒）
-      await page.waitForSelector('.calendar-cell.day', { timeout: 20000 });
+      // カレンダーのロード完了 or 失敗（APIブロック等）を待機（最大20秒）
+      // - 成功: .calendar-cell.day が出現
+      // - 失敗: .jsc-room-calendar が非表示または削除される
+      const calendarLoaded = await page.waitForFunction(
+        () => {
+          const cells = document.querySelectorAll('.calendar-cell.day');
+          if (cells.length > 0) return true;
+          const cal = document.querySelector('.jsc-room-calendar') as HTMLElement | null;
+          // カレンダーが削除済み or 非表示 → ロード失敗と判断
+          if (!cal) return true;
+          if (cal.style.display === 'none' || window.getComputedStyle(cal).display === 'none') return true;
+          return false;
+        },
+        { timeout: 20000 }
+      ).catch(() => null);
+
+      // セルが存在するか最終確認
+      const cellCount = await page.$$eval('.calendar-cell.day', (els) => els.length).catch(() => 0);
+      if (cellCount === 0) {
+        console.warn(`[jalan] 宿番号 ${yadNo}: カレンダーを取得できませんでした（APIブロックまたはタイムアウト）`);
+        return [];
+      }
 
       // カレンダーからセルを抽出する関数
       const extractCells = (): Promise<VacancyDay[]> =>
